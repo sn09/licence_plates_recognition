@@ -1,0 +1,84 @@
+model:
+  class_factory: recognition_app.helpers.models.LightningCRNN
+  params:
+    cnn_input_size: [64, 320]
+    cnn_output_len: 20
+    rnn_hidden_size: 256
+    rnn_num_layers: 3
+    rnn_dropout: 0.4
+    rnn_bidirectional: true
+
+optimizer:
+  adam:
+    use: true
+    class_factory: torch.optim.Adam
+    params:
+      lr: 0.0003
+      amsgrad: true
+      weight_decay: 0.0001
+
+scheduler:
+  cosine:
+    use: true
+    class_factory: torch.optim.lr_scheduler.CosineAnnealingLR
+    params:
+      T_max: 20
+
+transformers:
+  resize:
+    use_train: true
+    use_test: true
+    class_factory: recognition_app.helpers.transforms.Resize
+    params:
+      size: [320, 64]
+
+  random_rotation:
+    use_train: true
+    use_test: false
+    class_factory: torchvision.transforms.RandomRotation
+    params:
+      degrees: 5
+
+  gaussian_blur:
+    use_train: true
+    use_test: false
+    class_factory: torchvision.transforms.GaussianBlur
+    params:
+      kernel_size: [5, 5]
+
+  to_tensor:
+    use_train: true
+    use_test: true
+    class_factory: torchvision.transforms.ToTensor
+    params:
+
+callbacks:
+  model_checkpoint:
+    use: true
+    class_factory: lightning.pytorch.callbacks.ModelCheckpoint
+    params:
+      dirpath: ${hydra.runtime.cwd}/models/
+      filename: "{epoch}-{val_loss:.2f}"
+      save_last: true
+
+  learning_rate_monitor:
+    use: true
+    class_factory: lightning.pytorch.callbacks.LearningRateMonitor
+    params:
+      logging_interval: step
+
+  early_stopping:
+    use: true
+    class_factory: lightning.pytorch.callbacks.EarlyStopping
+    params:
+      monitor: val_loss
+
+  rich_model_summary:
+    use: true
+    class_factory: lightning.pytorch.callbacks.RichModelSummary
+    params:
+      max_depth: 2
+
+  device_stats_monitor:
+    use: true
+    class_factory: lightning.pytorch.callbacks.DeviceStatsMonitor

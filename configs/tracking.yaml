@@ -1,0 +1,18 @@
+tensorboard:
+  uri: "128.0.1.2:8000"
+  use: true
+  class_factory: lightning.pytorch.loggers.TensorBoardLogger
+  params:
+    save_dir: ${hydra.runtime.cwd}/logs/
+    name: default
+
+mlflow:
+  use: false
+  class_factory: lightning.pytorch.loggers.MLFlowLogger
+  params:
+    tracking_uri: "http://128.0.1.1:8000"
+    experiment_name: default
+  autolog:
+    use: true
+    params:
+      log_models: false

@@ -1,0 +1,8 @@
+path: ${hydra.runtime.cwd}/data/
+dataset:
+  class_factory: recognition_app.helpers.data.RecognitionDataModule
+  params:
+    alphabet: 0123456789ABEKMHOPCTYX
+    batch_size: 128
+    num_workers: 4
+    train_frac: 0.8

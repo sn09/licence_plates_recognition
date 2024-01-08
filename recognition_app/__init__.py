@@ -1,1 +1,1 @@
-"""App module."""
+"""Main app module."""
