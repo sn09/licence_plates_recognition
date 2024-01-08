@@ -21,7 +21,9 @@ class FeatureExtractor(nn.Module):
         super().__init__()
 
         height, width = input_size
-        resnet = torchvision.models.resnet18(pretrained=True)
+        resnet = torchvision.models.resnet18(
+            weights=torchvision.models.ResNet18_Weights.DEFAULT
+        )
         self.cnn = nn.Sequential(*list(resnet.children())[:-2])
 
         self.pool = nn.AvgPool2d(kernel_size=(height // 32, 1))

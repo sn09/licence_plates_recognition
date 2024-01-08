@@ -22,7 +22,7 @@ scheduler:
     use: true
     class_factory: torch.optim.lr_scheduler.CosineAnnealingLR
     params:
-      T_max: 20
+      T_max: 5
 
 transformers:
   resize:
@@ -31,6 +31,11 @@ transformers:
     class_factory: recognition_app.helpers.transforms.Resize
     params:
       size: [320, 64]
+
+  to_tensor:
+    use_train: true
+    use_test: true
+    class_factory: torchvision.transforms.ToTensor
 
   random_rotation:
     use_train: true
@@ -45,12 +50,6 @@ transformers:
     class_factory: torchvision.transforms.GaussianBlur
     params:
       kernel_size: [5, 5]
-
-  to_tensor:
-    use_train: true
-    use_test: true
-    class_factory: torchvision.transforms.ToTensor
-    params:
 
 callbacks:
   model_checkpoint:

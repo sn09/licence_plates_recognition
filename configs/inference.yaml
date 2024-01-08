@@ -1,6 +1,6 @@
 defaults:
-  - data: data
-  - model: model
+  - data
+  - model
   - _self_
 inference_params:
   output_path: test.csv

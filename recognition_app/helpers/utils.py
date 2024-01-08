@@ -4,14 +4,29 @@ from importlib import import_module
 
 import lightning as L
 import numpy as np
+import omegaconf
 import torch
 import torch.nn as nn
+import torchvision.transforms as T
 from omegaconf import DictConfig
 
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
+
+
+def _validate_params(params: DictConfig) -> DictConfig:
+    params_dct = dict(params)
+    for key, value in params_dct.items():
+        if isinstance(value, omegaconf.listconfig.ListConfig):
+            params_dct[key] = tuple(value)
+    return params_dct
+
+
+def _get_config_params(config: DictConfig) -> DictConfig:
+    params = config.params if hasattr(config, "params") else dict()
+    return _validate_params(params)
 
 
 def import_object(object_path: str):
@@ -81,11 +96,11 @@ def get_callbacks(config: DictConfig) -> list[L.Callback]:
     callbacks_lst = []
     for name, cfg in config.items():
         if cfg.use:
-            params = cfg.params if hasattr(cfg, "params") else dict()
+            params = _get_config_params(cfg)
             callback_cls = import_object(cfg.class_factory)
             callbacks_lst.append(callback_cls(**params))
 
-            LOGGER.info("Using callback %s, params - %s.", (name, params))
+            LOGGER.info("Using callback %s, params - %s.", name, params)
 
     return callbacks_lst
 
@@ -102,16 +117,19 @@ def get_loggers(config: DictConfig):
     loggers = {}
     for name, cfg in config.items():
         if cfg.use:
-            params = cfg.params if hasattr(cfg, "params") else dict()
+            params = _get_config_params(cfg)
             logger_cls = import_object(cfg.class_factory)
             loggers[name] = logger_cls(**params)
-            LOGGER.info("Using logger %s, params - %s.", (name, params))
+            LOGGER.info("Using logger %s, params - %s.", name, params)
 
     return loggers
 
 
 def get_model(
-    config: DictConfig, optimizer_cfg: DictConfig, scheduler_cfg: DictConfig
+    config: DictConfig,
+    optimizer_cfg: DictConfig,
+    scheduler_cfg: DictConfig,
+    **extra_params,
 ) -> L.LightningModule:
     """Get Lightning model from config.
 
@@ -122,8 +140,12 @@ def get_model(
         Lightning model
     """
     model_cls = import_object(config.class_factory)
+    params = _get_config_params(config)
     return model_cls(
-        optimizer_config=optimizer_cfg, scheduler_config=scheduler_cfg, **config.params
+        optimizer_config=optimizer_cfg,
+        scheduler_config=scheduler_cfg,
+        **params,
+        **extra_params,
     )
 
 
@@ -144,11 +166,12 @@ def get_dataset(
         Lightning dataset
     """
     dataset_cls = import_object(config.class_factory)
+    params = _get_config_params(config)
     return dataset_cls(
         train_path=train_path,
         test_path=test_path,
-        transformers=transformers,
-        **config.params,
+        transforms=transformers,
+        **params,
     )
 
 
@@ -164,9 +187,10 @@ def get_optimizer(config: DictConfig, model_params: dict) -> torch.optim.Optimiz
     """
     for name, cfg in config.items():
         if cfg.use:
-            LOGGER.info("Using optimizer %s, params - %s.", (name, config.params))
-            optimizer_cls = import_object(config.class_factory)
-            return optimizer_cls(model_params, **config.params)
+            params = _get_config_params(cfg)
+            LOGGER.info("Using optimizer %s, params - %s.", name, params)
+            optimizer_cls = import_object(cfg.class_factory)
+            return optimizer_cls(model_params, **params)
     raise ValueError("No optimizers provided in config")
 
 
@@ -184,9 +208,10 @@ def get_scheduler(
     """
     for name, cfg in config.items():
         if cfg.use:
-            LOGGER.info("Using optimizer %s, params - %s.", (name, config.params))
-            scheduler_cls = import_object(config.class_factory)
-            return scheduler_cls(optimizer, **config.params)
+            params = _get_config_params(cfg)
+            LOGGER.info("Using scheduler %s, params - %s.", name, params)
+            scheduler_cls = import_object(cfg.class_factory)
+            return scheduler_cls(optimizer, **params)
 
 
 def get_transformers(config: DictConfig, is_train: bool = True):
@@ -201,7 +226,13 @@ def get_transformers(config: DictConfig, is_train: bool = True):
     transformers = []
     for name, cfg in config.items():
         if cfg.use_train and is_train or cfg.use_test and not is_train:
-            LOGGER.info("Using transformer %s, params - %s.", (name, config.params))
-            transformer_cls = import_object(config.class_factory)
-            transformers.append(transformer_cls(**config.params))
-    return transformers
+            params = _get_config_params(cfg)
+            LOGGER.info("Using transformer %s, params - %s.", name, params)
+
+            for key, value in params.items():
+                print(key, value, type(value))
+
+            transformer_cls = import_object(cfg.class_factory)
+            transformers.append(transformer_cls(**params))
+    final_transformer = T.Compose(transformers)
+    return final_transformer

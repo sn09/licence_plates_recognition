@@ -23,8 +23,8 @@ class Resize:
             Dict with image resized to self.size.
         """
         interpolation = (
-            cv2.INTER_AREA if self.size[0] < item["image"].shape[1] else cv2.INTER_LINEAR
+            cv2.INTER_AREA if self.size[0] < item.shape[1] else cv2.INTER_LINEAR
         )
-        item["image"] = cv2.resize(item["image"], self.size, interpolation=interpolation)
+        item = cv2.resize(item, self.size, interpolation=interpolation)
 
         return item

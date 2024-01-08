@@ -1,8 +1,8 @@
 defaults:
-  - data: data
-  - model: model
-  - tracking: tracking
-  - trainer: trainer
+  - data
+  - model
+  - tracking
+  - trainer
   - _self_
 training_params:
   model_filename: model

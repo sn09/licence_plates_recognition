@@ -2,8 +2,8 @@
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
-from .recognition_app.infer import infer
-from .recognition_app.train import train
+from recognition_app.infer import infer
+from recognition_app.train import train
 
 
 def _setup_parser(parser: ArgumentParser) -> None:
@@ -23,13 +23,13 @@ def _setup_parser(parser: ArgumentParser) -> None:
     train_parser.add_argument(
         "--config-path",
         help="path to config file",
-        default="./configs/",
+        default="../configs/",
     )
     train_parser.set_defaults(callback=train)
 
     # Model inference
     infer_parser = subparsers.add_parser(
-        "train",
+        "infer",
         help="tool for model inference",
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
@@ -41,7 +41,7 @@ def _setup_parser(parser: ArgumentParser) -> None:
     infer_parser.add_argument(
         "--config-path",
         help="path to config file",
-        default="./configs/",
+        default="../configs/",
     )
     infer_parser.set_defaults(callback=infer)
 

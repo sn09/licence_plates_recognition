@@ -27,12 +27,13 @@ def infer(
         config_path: path to config location
     """
     config_path = config_path or Path(__file__).parent / "configs"
+    LOGGER.info("Using config_path %s/%s", config_path, config_name)
     with initialize(version_base=None, config_path=config_path):
         config: DictConfig = compose(config_name=config_name, return_hydra_config=True)
         LOGGER.info("Loaded training config:\n%s", OmegaConf.to_yaml(config))
 
         # Load module from checkpoint
-        model_cls = import_object(config.model.model.class_factory)
+        model_cls = import_object(config.model.class_factory)
         model = model_cls.load_from_checkpoint(config.inference_params.checkpoint_path)
         LOGGER.info(
             "Loading model from checkpoint: %s", config.inference_params.checkpoint_path
@@ -40,7 +41,7 @@ def infer(
 
         # Get data
         base_path = Path(config.data.path)
-        transformers = get_transformers(config.model.transformers, is_train=False)
+        transformers = get_transformers(config.transformers, is_train=False)
         data_module = get_dataset(
             config.data.dataset,
             train_path=base_path / "train",
@@ -63,3 +64,7 @@ def infer(
         )
         final_df.to_csv(config.inference_params.output_path, index=False)
         LOGGER.info("Save prediction to %s.", config.inference_params.output_path)
+
+
+if __name__ == "__main__":
+    infer()

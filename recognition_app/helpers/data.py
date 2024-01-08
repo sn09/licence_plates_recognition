@@ -6,7 +6,7 @@ import cv2
 import lightning as L
 import numpy as np
 import torch
-import torch.nn as nn
+import torchvision.transforms as T
 from sklearn.model_selection import train_test_split
 
 
@@ -22,7 +22,7 @@ class RecognitionDataset(torch.utils.data.Dataset):
         self,
         filenames: list[os.PathLike],
         alphabet: str,
-        transforms: list[nn.Module] | None = None,
+        transforms: T.Compose | None = None,
         is_train: bool = True,
     ):
         """Image dataset instance.
@@ -67,6 +67,7 @@ class RecognitionDataset(torch.utils.data.Dataset):
         correct_labels = []
         for idx, label in enumerate(labels):
             if self._check_label(label):
+                correct_labels.append(label)
                 continue
 
             self.filenames.pop(idx)
@@ -117,7 +118,7 @@ class RecognitionDataset(torch.utils.data.Dataset):
 
         output = dict(image=image, seq=seq, seq_len=seq_len, label=label)
         if self.transforms:
-            output = self.transforms(output)
+            output["image"] = self.transforms(output["image"]).permute(1, 2, 0).numpy()
         return output
 
     def text_to_seq(self, text: str) -> list[int]:
@@ -149,7 +150,7 @@ class RecognitionDataset(torch.utils.data.Dataset):
             images.append(torch.from_numpy(item["image"]).permute(2, 0, 1).float())
             seqs.extend(item["seq"])
             seq_lens.append(item["seq_len"])
-            texts.append(item["text"])
+            texts.append(item["label"])
         images = torch.stack(images)
         seqs = torch.Tensor(seqs).int()
         seq_lens = torch.Tensor(seq_lens).int()
@@ -168,7 +169,7 @@ class RecognitionDataModule(L.LightningDataModule):
         batch_size: int,
         num_workers: int,
         train_frac: float = 0.8,
-        transforms: list[nn.Module] | None = None,
+        transforms: T.Compose | None = None,
     ):
         """Image dataset instance.
 
