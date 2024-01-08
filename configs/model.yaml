@@ -3,10 +3,13 @@ model:
   params:
     cnn_input_size: [64, 320]
     cnn_output_len: 20
-    rnn_hidden_size: 256
-    rnn_num_layers: 3
+    cnn_pool: true
+    cnn_downsample: false
+    cnn_se: false
+    rnn_hidden_size: 128
+    rnn_num_layers: 2
     rnn_dropout: 0.4
-    rnn_bidirectional: true
+    rnn_bidirectional: false
 
 optimizer:
   adam:

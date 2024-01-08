@@ -2,33 +2,138 @@
 import lightning as L
 import torch
 import torch.nn as nn
-import torchvision
 from torch.nn.functional import ctc_loss, log_softmax
 
 from .utils import get_optimizer, get_scheduler
 
 
-class FeatureExtractor(nn.Module):
-    """Feature extractor model implementation."""
+class SELayer(nn.Module):
+    """Custom SELayer implementation."""
 
-    def __init__(self, input_size: tuple[int, int] = (64, 320), output_len: int = 20):
+    def __init__(self, n_channels: int, reduction: int = 16):
+        """SELayer instance.
+
+        Args:
+            - n_channels: number of input channels
+            - reduction: reduction coef
+        """
+        super().__init__()
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Sequential(
+            nn.Linear(n_channels, n_channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(n_channels // reduction, n_channels, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """SELayer forward pass.
+
+        Args:
+            - input: input data
+        """
+        b, c, _, _ = input.size()
+        out = self.avgpool(input).view(b, c)
+        out = self.fc(out).view(b, c, 1, 1)
+        return input * out.expand_as(input)
+
+
+class CNNBlock(nn.Module):
+    """CNNBlock implementation."""
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        pool: bool = True,
+        downsample: bool = True,
+        se: bool = True,
+    ):
+        """CNNBlock instance.
+
+        Args:
+            - in_features: number of input features
+            - out_features: number of output features
+            - pool: max pooling inside CNNBlock flag
+            - downsample: add residual after CNNBlock
+            - se: add SELayer to CNNBlock
+        """
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            in_features, out_features, kernel_size=(3, 3), padding=(1, 1), bias=False
+        )
+        self.conv2 = nn.Conv2d(
+            out_features, out_features, kernel_size=(3, 3), padding=(1, 1), bias=False
+        )
+        self.bn1 = nn.BatchNorm2d(out_features)
+        self.bn2 = nn.BatchNorm2d(out_features)
+        self.relu = nn.ReLU(inplace=True)
+
+        self.maxpool = nn.MaxPool2d((2, 2)) if pool else nn.Identity()
+        self.se = SELayer(out_features) if se else nn.Identity()
+
+        self.downsample = downsample
+        if downsample:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_features, out_features, kernel_size=1, bias=False),
+                nn.BatchNorm2d(out_features),
+            )
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """CNNBlock forward pass.
+
+        Args:
+            - input: input data
+        """
+        out = self.conv1(input)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample:
+            residual = self.downsample(input)
+            out += residual
+
+        out = self.relu(out)
+        out = self.maxpool(out)
+        out = self.se(out)
+        return out
+
+
+class FeatureExtractor(nn.Module):
+    """Feature extractor model."""
+
+    def __init__(
+        self,
+        input_size: tuple[int, int] = (64, 320),
+        output_len: int = 20,
+        pool: bool = True,
+        downsample: bool = False,
+        se: bool = False,
+    ):
         """FeatureExtractor instance.
 
         Args:
             - input_size: input image size
             - output_len: number of output features
+            - pool: max pooling inside CNNBlock flag
+            - downsample: add residual after CNNBlock
+            - se: add SELayer to CNNBlock
         """
         super().__init__()
 
-        height, width = input_size
-        resnet = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.DEFAULT
+        h, w = input_size
+        self.cnn = nn.Sequential(
+            CNNBlock(3, 32, pool=pool, downsample=downsample, se=se),
+            CNNBlock(32, 64, pool=pool, downsample=downsample, se=se),
+            CNNBlock(64, 128, pool=pool, downsample=downsample, se=se),
         )
-        self.cnn = nn.Sequential(*list(resnet.children())[:-2])
 
-        self.pool = nn.AvgPool2d(kernel_size=(height // 32, 1))
-        self.proj = nn.Conv2d(width // 32, output_len, kernel_size=1)
-        self.num_output_features = self.cnn[-1][-1].bn2.num_features
+        self.pool = nn.AvgPool2d(kernel_size=(h // 8, 4))
+        self.proj = nn.Conv2d(w // 32, output_len, kernel_size=1)
+        self.num_output_features = 128
 
     def apply_projection(self, input: torch.Tensor) -> torch.Tensor:
         """Use convolution to increase width of a features.
@@ -42,12 +147,19 @@ class FeatureExtractor(nn.Module):
         input = input.permute(0, 3, 2, 1).contiguous()
         input = self.proj(input)
         input = input.permute(0, 2, 3, 1).contiguous()
+
         return input
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """FeatureExtractor forward pass.
+
+        Args:
+            - input: input data
+        """
         features = self.cnn(input)
         features = self.pool(features)
         features = self.apply_projection(features)
+
         return features
 
 
@@ -76,7 +188,7 @@ class SequencePredictor(nn.Module):
         super().__init__()
 
         self.num_classes = num_classes
-        self.rnn = nn.LSTM(
+        self.rnn = nn.GRU(
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
@@ -101,11 +213,8 @@ class SequencePredictor(nn.Module):
         h = torch.zeros(
             self.rnn.num_layers * num_directions, batch_size, self.rnn.hidden_size
         )
-        c = torch.zeros(
-            self.rnn.num_layers * num_directions, batch_size, self.rnn.hidden_size
-        )
 
-        return h, c
+        return h
 
     def _reshape_features(self, input: torch.Tensor) -> torch.Tensor:
         """Change dimensions of input to fit RNN expected input.
@@ -130,8 +239,8 @@ class SequencePredictor(nn.Module):
         input = self._reshape_features(input)
 
         batch_size = input.size(1)
-        h_0, c_0 = self._init_hidden(batch_size)
-        output, _ = self.rnn(input, (h_0, c_0))
+        h_0 = self._init_hidden(batch_size)
+        output, _ = self.rnn(input, h_0)
 
         output = self.fc(output)
         return output
@@ -145,6 +254,9 @@ class CRNN(nn.Module):
         alphabet: str,
         cnn_input_size: tuple[int] = (64, 320),
         cnn_output_len: int = 20,
+        cnn_pool: bool = True,
+        cnn_downsample: bool = True,
+        cnn_se: bool = True,
         rnn_hidden_size: int = 128,
         rnn_num_layers: int = 2,
         rnn_dropout: float = 0.3,
@@ -156,6 +268,9 @@ class CRNN(nn.Module):
             - alphabet: allowed alphabet
             - cnn_input_size: input image size
             - cnn_output_len: number of output features
+            - cnn_pool: max pooling inside CNNBlock flag
+            - cnn_downsample: add residual after CNNBlock
+            - cnn_se: add SELayer to CNNBlock
             - rnn_hidden_size: size of rnn hidden layer
             - rnn_num_layers: number of lstm layers
             - rnn_dropout: dropout coef
@@ -164,7 +279,11 @@ class CRNN(nn.Module):
         super().__init__()
         self.alphabet = alphabet
         self.features_extractor = FeatureExtractor(
-            input_size=cnn_input_size, output_len=cnn_output_len
+            input_size=cnn_input_size,
+            output_len=cnn_output_len,
+            pool=cnn_pool,
+            downsample=cnn_downsample,
+            se=cnn_se,
         )
         self.sequence_predictor = SequencePredictor(
             input_size=self.features_extractor.num_output_features,
@@ -194,6 +313,9 @@ class LightningCRNN(L.LightningModule):
         alphabet: str,
         cnn_input_size: tuple[int] = (64, 320),
         cnn_output_len: int = 20,
+        cnn_pool: bool = True,
+        cnn_downsample: bool = True,
+        cnn_se: bool = True,
         rnn_hidden_size: int = 128,
         rnn_num_layers: int = 2,
         rnn_dropout: float = 0.3,
@@ -207,6 +329,9 @@ class LightningCRNN(L.LightningModule):
             - alphabet: allowed alphabet
             - cnn_input_size: input image size
             - cnn_output_len: number of output features
+            - cnn_pool: max pooling inside CNNBlock flag
+            - cnn_downsample: add residual after CNNBlock
+            - cnn_se: add SELayer to CNNBlock
             - rnn_hidden_size: size of rnn hidden layer
             - rnn_num_layers: number of lstm layers
             - rnn_dropout: dropout coef
@@ -220,6 +345,9 @@ class LightningCRNN(L.LightningModule):
             alphabet=alphabet,
             cnn_input_size=cnn_input_size,
             cnn_output_len=cnn_output_len,
+            cnn_pool=cnn_pool,
+            cnn_downsample=cnn_downsample,
+            cnn_se=cnn_se,
             rnn_hidden_size=rnn_hidden_size,
             rnn_num_layers=rnn_num_layers,
             rnn_dropout=rnn_dropout,
