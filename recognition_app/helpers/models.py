@@ -356,9 +356,10 @@ class LightningCRNN(L.LightningModule):
         self.optimizer_config = optimizer_config
         self.scheduler_config = scheduler_config
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: dict):
         """Forward pass of the model."""
-        return self.model(input)
+        image = input["image"]
+        return self.model(image)
 
     def basic_step(self, batch, stage: str):
         """Basic step for train and validation."""

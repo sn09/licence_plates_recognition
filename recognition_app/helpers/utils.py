@@ -229,9 +229,6 @@ def get_transformers(config: DictConfig, is_train: bool = True):
             params = _get_config_params(cfg)
             LOGGER.info("Using transformer %s, params - %s.", name, params)
 
-            for key, value in params.items():
-                print(key, value, type(value))
-
             transformer_cls = import_object(cfg.class_factory)
             transformers.append(transformer_cls(**params))
     final_transformer = T.Compose(transformers)

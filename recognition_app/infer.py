@@ -1,9 +1,11 @@
 """Model inference module."""
 
 import logging
+from functools import partial
 from pathlib import Path
 
 import lightning as L
+import numpy as np
 import pandas as pd
 from hydra import compose, initialize
 from omegaconf import DictConfig, OmegaConf
@@ -53,7 +55,8 @@ def infer(
         # Get predictions
         trainer = L.Trainer()
         predictions = trainer.predict(model, datamodule=data_module)
-        predictions = decode(predictions, model.alphabet)
+        decode_fn = partial(decode, alphabet=config.data.dataset.params.alphabet)
+        predictions = np.concatenate(list(map(decode_fn, predictions)))
 
         # Prepare output dataframe
         final_df = pd.DataFrame(
