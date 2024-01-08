@@ -12,13 +12,13 @@ focus is on using the majority of currently popular MLFlow techonologies.
 
 - `poetry`, `pre-commit`, `GitHub Actions` - code management and quality
 - `dvc` - data management
-- `hydra` - config management
+- `hydra` - configs management
 - `mlflow`, `tensorboard` - experiments and metrics tracking
-- `PyTorch Lightning` - model development
+- `PyTorch Lightning` - models and datasets implementation
 
 ## Quick start
 
-### Project structure:
+### Project structure
 
 - `cli.py` - CLI interface for training/inference (all parameters are managed by
   hydra configs)
@@ -62,7 +62,7 @@ python cli.py infer
 poetry install
 ```
 
-**Pre-commit setup**
+**Pre-commit setup:**
 
 ```bash
 pre-commit install
